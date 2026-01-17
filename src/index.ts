@@ -17,6 +17,12 @@ const ASG_NAME = process.env.ASG_NAME || "on-demand-machine-asg";
 const LEASE_TTL_MS = 10 * 60 * 1000; // 10 min
 const HEARTBEAT_MAX_AGE_MS = 60 * 1000; // if no heartbeat in 60s, treat unhealthy
 
+// cooldown and scaling config
+const TARGET_AVAILABLE = Number(process.env.TARGET_AVAILABLE || 2);
+const SCALE_COOLDOWN_MS = 30 * 1000; // 30 seconds
+let lastScaleOutAt = 0;
+
+
 // ========= AWS CLIENTS =========
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 const asg = new AutoScalingClient({ region: REGION });
@@ -24,7 +30,48 @@ const asg = new AutoScalingClient({ region: REGION });
 // ========= HELPERS =========
 const now = () => Date.now();
 
-async function scaleOutByOneIfNeeded() {
+async function countAvailableWorkers() {
+  const scanResp = await ddb.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: "#s = :available",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":available": "available" },
+    })
+  );
+
+  const items = scanResp.Items || [];
+  const healthy = items.filter((m) => (now() - (m.lastHeartbeat || 0)) <= HEARTBEAT_MAX_AGE_MS);
+
+  return healthy.length;
+}
+
+async function scaleToMeetBuffer() {
+  const t = now();
+
+  // check cooldown
+  if (t < lastScaleOutAt + SCALE_COOLDOWN_MS) {
+    return {
+      scaled: false,
+      reason: "cooldown_active",
+      retryAfterMs: SCALE_COOLDOWN_MS - (t - lastScaleOutAt),
+    };
+  }
+
+  const availableNow = await countAvailableWorkers();
+
+  // how many free machines do we want?
+  const missing = TARGET_AVAILABLE - availableNow;
+
+  if (missing <= 0) {
+    return {
+      scaled: false,
+      reason: "buffer_satisfied",
+      availableNow,
+      targetAvailable: TARGET_AVAILABLE,
+    };
+  }
+
   const resp = await asg.send(
     new DescribeAutoScalingGroupsCommand({ AutoScalingGroupNames: [ASG_NAME] })
   );
@@ -32,22 +79,41 @@ async function scaleOutByOneIfNeeded() {
   const group = resp.AutoScalingGroups?.[0];
   if (!group) throw new Error(`ASG not found: ${ASG_NAME}`);
 
-  const desired = group.DesiredCapacity ?? 0;
+  const desired = group.DesiredCapacity ?? 0;     // current number of instances available
   const max = group.MaxSize ?? desired;
 
-  if (desired >= max) {
-    return { scaled: false, reason: "ASG at max capacity", desired, max };
+  const desiredAfter = Math.min(desired + missing, max);
+  if (desiredAfter === desired) {
+    return {
+      scaled: false,
+      reason: "ASG at max capacity",
+      desired,
+      max,
+      missing,
+      availableNow,
+      targetAvailable: TARGET_AVAILABLE,
+    };
   }
 
   await asg.send(
     new SetDesiredCapacityCommand({
       AutoScalingGroupName: ASG_NAME,
-      DesiredCapacity: desired + 1,
+      DesiredCapacity: desiredAfter,
       HonorCooldown: false,
     })
   );
 
-  return { scaled: true, desiredBefore: desired, desiredAfter: desired + 1 };
+  lastScaleOutAt = t;
+
+  return {
+    scaled: true,
+    reason: "scaled_to_meet_buffer",
+    availableNow,
+    targetAvailable: TARGET_AVAILABLE,
+    missing,
+    desiredBefore: desired,
+    desiredAfter,
+  };
 }
 
 // ========= ROUTES =========
@@ -111,7 +177,7 @@ app.post("/claim", async (req, res) => {
     const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: "userId is required" });
 
-    // Find available machines (MVP uses Scan - ok for small scale)
+    // Find available machines (with recent heartbeat)
     const scanResp = await ddb.send(
       new ScanCommand({
         TableName: TABLE_NAME,
@@ -127,8 +193,7 @@ app.post("/claim", async (req, res) => {
     const healthy = items.filter((m) => (now() - (m.lastHeartbeat || 0)) <= HEARTBEAT_MAX_AGE_MS);
 
     if (healthy.length === 0) {
-      // No machines → scale out
-      const scaleInfo = await scaleOutByOneIfNeeded();
+      const scaleInfo = await scaleToMeetBuffer();
       return res.status(202).json({
         ok: false,
         message: "No machines available. Scaling up. Retry in a few seconds.",
@@ -137,7 +202,7 @@ app.post("/claim", async (req, res) => {
     }
 
     // Pick first machine (simple)
-    const chosen : any = healthy[0];
+    const chosen: any = healthy[0];
 
     // Mark as leased
     const expiry = now() + LEASE_TTL_MS;
