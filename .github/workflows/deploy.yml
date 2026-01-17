@@ -1,0 +1,34 @@
+name: Deploy Orchestrator
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+
+            cd ~/aws-machine-claimer
+
+            git pull origin main
+            npm install
+
+            cat > .env <<EOF
+            AWS_REGION=${{ secrets.AWS_REGION }}
+            TABLE_NAME=${{ secrets.TABLE_NAME }}
+            ASG_NAME=${{ secrets.ASG_NAME }}
+            PORT=3000
+            EOF
+
+            pm2 restart orchestrator || pm2 start .dist/index.js --name orchestrator
+            pm2 save
