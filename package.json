@@ -1,0 +1,25 @@
+{
+  "name": "aws-machine-claimer",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm run build && node dist/index.js",
+    "build": "tsc --build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-auto-scaling": "^3.970.0",
+    "@aws-sdk/client-dynamodb": "^3.970.0",
+    "@aws-sdk/lib-dynamodb": "^3.970.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.9",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "typescript": "^5.9.3"
+  }
+}
