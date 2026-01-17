@@ -31,5 +31,5 @@ jobs:
             PORT=3000
             EOF
 
-            pm2 restart orchestrator || pm2 start .dist/index.js --name orchestrator
+            pm2 restart orchestrator || pm2 start dist/index.js --name orchestrator
             pm2 save
