@@ -1,4 +1,5 @@
 // this code file shows how the worker instances work
+// testing ci/cd pipeline
 import http from "http";
 
 const BACKEND_URL = process.env.BACKEND_URL; 
