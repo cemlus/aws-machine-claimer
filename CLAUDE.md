@@ -58,4 +58,4 @@ This is an **AWS Machine Claimer** system with two parts:
 - Backend currently requires AWS credentials via environment (IAM role on EC2 or AWS config on local)
 - The system is designed for single-user scenario; no authentication on API endpoints
 - Workers must be able to reach orchestrator on port 3000 (security group configuration)
-- Frontend defaults to `http://localhost:3000`; override with `VITE_API_URL`
+- Frontend defaults to `http://localhost:3000`; override with `VITE_API_URL` if backend is hosted elsewhere
