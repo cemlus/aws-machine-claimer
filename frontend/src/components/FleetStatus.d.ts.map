@@ -1,0 +1,1 @@
+{"version":3,"file":"FleetStatus.d.ts","sourceRoot":"","sources":["FleetStatus.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,UAAU,CAAC;AAE/C,UAAU,KAAK;IACb,MAAM,EAAE,cAAc,GAAG,IAAI,CAAC;IAC9B,OAAO,EAAE,OAAO,CAAC;CAClB;AAED,wBAAgB,WAAW,CAAC,EAAE,MAAM,EAAE,OAAO,EAAE,EAAE,KAAK,kDAgCrD"}
